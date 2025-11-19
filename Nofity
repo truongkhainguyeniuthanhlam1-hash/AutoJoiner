@@ -1,0 +1,74 @@
+repeat task.wait() until game:IsLoaded()
+
+--// SERVICES
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local player = Players.LocalPlayer
+
+--// CONFIG
+local API_URL = "http://127.0.0.1:8080/next"  -- 🔗 Địa chỉ server Python
+local CHECK_INTERVAL = 0.5                    -- mỗi 0.5 giây hỏi 1 lần
+local AUTO_KICK_TIME = 15 * 60                -- tự kick sau 15 phút (đổi server)
+
+print("🚀 CT Hopper Client đang chạy... (Mode: HTTP Request)")
+
+--// AUTO-KICK SAU 15 PHÚT
+task.spawn(function()
+    task.wait(AUTO_KICK_TIME)
+    print("⏰ Hết 15 phút, kick để làm mới server...")
+    TeleportService:Teleport(game.PlaceId, player)
+end)
+
+--// HÀM GỌI PYTHON SERVER NHẬN JOBID
+local function getNextJob()
+    local req = http_request or request or syn.request or fluxus.request
+    if not req then
+        warn("❌ Executor của bạn không hỗ trợ http_request.")
+        return nil
+    end
+
+    local success, res = pcall(function()
+        return req({
+            Url = API_URL,
+            Method = "GET",
+            Headers = {["Content-Type"] = "application/json"}
+        })
+    end)
+
+    if not success or not res or not res.Body then
+        warn("⚠️ Không thể kết nối đến server Python.")
+        return nil
+    end
+
+    local data
+    pcall(function()
+        data = HttpService:JSONDecode(res.Body)
+    end)
+
+    if not data then
+        warn("⚠️ Không thể decode JSON từ Python.")
+        return nil
+    end
+
+    if data.jobId then
+        print("🎯 Nhận được JobId mới:", data.jobId)
+        return data.jobId, data.placeId
+    else
+        print("⏳ Chưa có JobId khả dụng:", data.message or "đang chờ quét...")
+        return nil
+    end
+end
+
+--// MAIN LOOP
+while true do
+    local jobId, placeId = getNextJob()
+    if jobId and placeId then
+        print("🚀 Teleporting đến server mới:", jobId)
+        task.wait(0.5) -- Optional delay to avoid rapid consecutive requests
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(placeId, jobId, player)
+        end)
+    end
+    task.wait(CHECK_INTERVAL)
+end
